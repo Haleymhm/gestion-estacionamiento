@@ -1,0 +1,64 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+enum ReservationStatus {
+  reserved
+  used
+  canceled
+  released
+}
+
+// Prisma schema for the 'users' table
+model User {
+  id           String        @id @default(uuid())
+  userCode     Int           @unique @map("user_code")
+  userName     String        @map("user_name")
+  userEmail    String        @unique @map("user_email")
+  userRol      Int           @map("user_rol")
+  userStatus   Int           @map("user_status")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  reservations Reservation[]
+}
+
+model Parking {
+  id           String        @id @default(uuid())
+  location     String
+  places       Int
+  status       Int
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  reservations Reservation[]
+}
+
+model VehicleType {
+  id           String        @id @default(uuid())
+  name         String
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  reservations Reservation[]
+}
+
+model Reservation {
+  id                String            @id @default(uuid())
+  parkingId         String            @map("parking_id")
+  userCode          Int               @map("user_code")
+  vehiclePlate      String            @map("vehicle_plate")
+  vehicleTypeId     String            @map("vehicle_type_id")
+  vehicleModel      String            @map("vehicle_model")
+  reservationDate   DateTime          @map("reservation_date")
+  reservationStatus ReservationStatus @default(reserved) @map("reservation_status")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  user        User        @relation(fields: [userCode], references: [userCode])
+  parking     Parking     @relation(fields: [parkingId], references: [id])
+  vehicleType VehicleType @relation(fields: [vehicleTypeId], references: [id])
+}
