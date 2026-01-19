@@ -1,0 +1,37 @@
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { parkingSlotService } from '@/services/parking-slot.service';
+import { parkingSlotCreateSchema } from '@/schemas/parking-slot.schema';
+import { SlotStatus } from '@prisma/client';
+
+export async function GET(req: NextRequest) {
+    try {
+        const searchParams = req.nextUrl.searchParams;
+        const zoneId = searchParams.get('zoneId') || undefined;
+        const statusParam = searchParams.get('status');
+        const status = statusParam && Object.values(SlotStatus).includes(statusParam as SlotStatus)
+            ? (statusParam as SlotStatus)
+            : undefined;
+
+        const slots = await parkingSlotService.getAll(zoneId, status);
+        return apiResponse(slots);
+    } catch (error) {
+        return apiResponse(null, 500, (error as Error).message);
+    }
+}
+
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json();
+        const validation = parkingSlotCreateSchema.safeParse(body);
+
+        if (!validation.success) {
+            return apiResponse(null, 400, validation.error.message);
+        }
+
+        const newSlot = await parkingSlotService.create(validation.data);
+        return apiResponse(newSlot, 201);
+    } catch (error) {
+        return apiResponse(null, 500, (error as Error).message);
+    }
+}
