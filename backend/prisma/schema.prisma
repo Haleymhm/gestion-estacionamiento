@@ -1,63 +1,189 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+
+// ==============================
+// 1. ENUMS
+// ==============================
+
+enum UserRole {
+  ADMIN
+  OPERATOR
 }
 
-enum ReservationStatus {
-  reserved 
-  used 
-  canceled 
-  released
+enum SlotStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
 }
 
-// Prisma schema for the 'users' table
+enum TicketStatus {
+  ACTIVE // Auto dentro
+  COMPLETED // Auto salió y pagó
+  CANCELLED // Ticket anulado
+}
+
+// ==============================
+// 2. CONFIGURACIÓN DEL SISTEMA
+// ==============================
+
+model SystemConfig {
+  id             String  @id @default(uuid())
+  pricePerMinute Decimal @default(0.0) // Tarifa global actual
+  companyName    String? // Nombre para imprimir en el ticket
+
+  // Solo debería haber 1 registro aquí.
+}
+
+// ==============================
+// 3. USUARIOS (Staff)
+// ==============================
+
 model User {
-  id          String   @id @default(uuid())
-  userCode    Int      @unique @map("user_code")
-  userName    String   @map("user_name")
-  userEmail   String   @unique @map("user_email")
-  userRol     Int      @map("user_rol")
-  userStatus  Int      @map("user_status")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  reservations Reservation[]
+  id       String   @id @default(uuid())
+  email    String   @unique
+  password String
+  name     String
+  role     UserRole @default(OPERATOR)
+  tickets  Ticket[]
 }
 
-model Parking {
-  id        String  @id @default(uuid())
-  location  String
-  places    Int
-  status    Int
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  reservations Reservation[]
+// ==============================
+// 4. INFRAESTRUCTURA
+// ==============================
+
+model Zone {
+  id    String        @id @default(uuid())
+  name  String // Ej: "Planta Baja"
+  slots ParkingSlot[]
 }
 
-model VehicleType {
-  id   String @id @default(uuid())
-  name String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model ParkingSlot {
+  id     String     @id @default(uuid())
+  code   String // Ej: "A-01"
+  status SlotStatus @default(AVAILABLE)
+
+  zoneId       String
+  zone         Zone          @relation(fields: [zoneId], references: [id])
+  tickets      Ticket[]
   reservations Reservation[]
+
+  @@unique([zoneId, code]) // Evita duplicados en la misma zona
 }
 
+// ==============================
+// 5. OPERACIÓN (Vehículos y Tickets)
+// ==============================
+
+model Vehicle {
+  id    String  @id @default(uuid())
+  plate String  @unique
+  brand String?
+  model String?
+
+  // NUEVO: Relación opcional con cliente (si usa la app)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  tickets      Ticket[]
+  reservations Reservation[] // Un auto puede tener reservas futuras
+}
+
+model Ticket {
+  id                     String       @id @default(uuid())
+  checkIn                DateTime     @default(now())
+  checkOut               DateTime?
+  pricePerMinuteSnapshot Decimal
+  totalAmount            Decimal?
+  status                 TicketStatus @default(ACTIVE)
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+
+  slotId String
+  slot   ParkingSlot @relation(fields: [slotId], references: [id])
+
+  operatorId String?
+  operator   User?   @relation(fields: [operatorId], references: [id])
+
+  // NUEVO: Relación con la reserva original (si existe)
+  reservationId String?      @unique
+  reservation   Reservation? @relation(fields: [reservationId], references: [id])
+
+  @@index([checkIn])
+  @@index([status])
+}
+
+// ... (Generadores y Enums anteriores se mantienen igual) ...
+
+// NUEVO: Estados para la reserva
+enum ReservationStatus {
+  PENDING // Creada, esperando pago o confirmación
+  CONFIRMED // Pagada/Confirmada
+  COMPLETED // El auto llegó y se convirtió en Ticket
+  CANCELLED // Usuario canceló
+  NOSHOW // Nunca llegó
+}
+
+// ... (SystemConfig se mantiene igual) ...
+
+// ==============================
+// 3. USUARIOS (Staff vs App)
+// ==============================
+
+// Staff del estacionamiento (Admin/Guardia)
+
+// NUEVO: Usuarios de la App Móvil
+model Client {
+  id       String  @id @default(uuid())
+  email    String  @unique
+  password String // Hash
+  fullName String
+  phone    String? // Útil para notificaciones SMS/WhatsApp
+
+  vehicles     Vehicle[] // Sus autos guardados
+  reservations Reservation[] // Sus reservas
+}
+
+// ... (Zone y ParkingSlot se mantienen igual) ...
+
+// ==============================
+// 5. OPERACIÓN (Vehículos, Reservas y Tickets)
+// ==============================
+
+// NUEVO: Modelo de Reserva
 model Reservation {
-  id                String   @id @default(uuid())
-  parkingId         String   @map("parking_id")
-  userCode          Int      @map("user_code")
-  vehiclePlate      String   @map("vehicle_plate")
-  vehicleTypeId     String   @map("vehicle_type_id")
-  vehicleModel      String   @map("vehicle_model")
-  reservationDate   DateTime @map("reservation_date")
-  reservationStatus ReservationStatus @default(reserved) @map("reservation_status")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id        String            @id @default(uuid())
+  startTime DateTime
+  endTime   DateTime // Estimado de salida
+  status    ReservationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
 
-  user              User         @relation(fields: [userCode], references: [userCode])
-  parking           Parking      @relation(fields: [parkingId], references: [id])
-  vehicleType       VehicleType  @relation(fields: [vehicleTypeId], references: [id])  
+  // Relaciones
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+
+  slotId String
+  slot   ParkingSlot @relation(fields: [slotId], references: [id])
+
+  // Si la reserva se cumple, se genera un ticket
+  ticket Ticket?
+
+  @@index([startTime, endTime]) // Vital para buscar disponibilidad rápido
 }
