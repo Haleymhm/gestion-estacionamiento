@@ -484,4 +484,4 @@ enum TicketStatus {
 > Para más detalles de implementación, consulta el archivo [schema.prisma](file:///home/haleymhm/Projects/repositories-git/gestion-estacionamiento/backend/prisma/schema.prisma)
 
 > [!NOTE]
-> Este diagrama fue generado automáticamente a partir del esquema de Prisma. Fecha: 2026-01-26
+> Este diagrama fue generado a partir del esquema de Prisma. Fecha: 2026-01-26
